@@ -473,9 +473,8 @@
                     <div class="total-money" id="total-salary">$0</div>
                 </div>
                 <div class="dash-right-group">
-                    <button class="action-icon-btn" onclick="exportBackup()" title="匯出備份">📥 備份</button>
-                    <button class="action-icon-btn" onclick="triggerImport()" title="還原備份">📤 還原</button>
-                    <input type="file" id="import-file-input" style="display:none" accept=".json" onchange="importBackup(event)">
+                    <button class="action-icon-btn" onclick="exportBackupText()" title="複製備份文字">📥 備份</button>
+                    <button class="action-icon-btn" onclick="importBackupText()" title="貼上還原">📤 還原</button>
                     <div class="history-btn-group">
                         <button class="hist-btn" id="undo-btn" onclick="triggerUndo()" title="復原上一動" disabled>↩</button>
                         <button class="hist-btn" id="redo-btn" onclick="triggerRedo()" title="重做下一動" disabled>↪</button>
@@ -587,8 +586,8 @@
         let undoStack = [];
         let redoStack = [];
 
-        // 📥 匯出資料備份功能
-        function exportBackup() {
+        // 📥 一鍵複製備份文字到剪貼簿
+        function exportBackupText() {
             haptic(20);
             const backupData = {
                 version: 1,
@@ -597,55 +596,65 @@
                 monthlyConfigs: monthlyConfigs,
                 customTags: customTags
             };
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
-            const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            const dateStr = new Date().toISOString().slice(0, 10);
-            downloadAnchor.setAttribute("download", `salary_backup_${dateStr}.json`);
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            downloadAnchor.remove();
-            showToast("📥 備份檔已成功下載！");
+            const jsonString = JSON.stringify(backupData);
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(jsonString).then(() => {
+                    showToast("📋 備份碼已複製！快去貼到 LINE 吧");
+                }).catch(() => {
+                    fallbackCopyText(jsonString);
+                });
+            } else {
+                fallbackCopyText(jsonString);
+            }
         }
 
-        // 📤 還原資料匯入功能
-        function triggerImport() {
+        function fallbackCopyText(string) {
+            const textArea = document.createElement("textarea");
+            textArea.value = string;
+            textArea.style.position = "fixed";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast("📋 備份碼已複製！快去貼到 LINE 吧");
+            } catch (err) {
+                alert("複製失敗，請手動複製");
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // 📤 從對話框貼上還原文字
+        function importBackupText() {
             haptic(20);
-            document.getElementById('import-file-input').click();
-        }
+            const inputStr = prompt("請貼上你的備份碼（JSON 文字）：");
+            if (!inputStr || !inputStr.trim()) return;
+            
+            try {
+                const parsed = JSON.parse(inputStr.trim());
+                if (parsed && parsed.workRecords) {
+                    if (confirm("確定要還原這筆備份資料嗎？這將會覆蓋目前的紀錄。")) {
+                        pushHistory();
+                        workRecords = parsed.workRecords || {};
+                        monthlyConfigs = parsed.monthlyConfigs || {};
+                        customTags = parsed.customTags || ['點工', '加班', '夜班', '扣款', '借支'];
 
-        function importBackup(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const parsed = JSON.parse(e.target.result);
-                    if (parsed && parsed.workRecords) {
-                        if (confirm(`確定要還原 ${parsed.date ? parsed.date.slice(0, 10) : '備份'} 的資料嗎？這將會覆蓋當前的紀錄。`)) {
-                            pushHistory();
-                            workRecords = parsed.workRecords || {};
-                            monthlyConfigs = parsed.monthlyConfigs || {};
-                            customTags = parsed.customTags || ['點工', '加班', '夜班', '扣款', '借支'];
+                        localStorage.setItem('cs_work_records', JSON.stringify(workRecords));
+                        localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
+                        localStorage.setItem('cs_custom_tags', JSON.stringify(customTags));
 
-                            localStorage.setItem('cs_work_records', JSON.stringify(workRecords));
-                            localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
-                            localStorage.setItem('cs_custom_tags', JSON.stringify(customTags));
-
-                            syncConfigInputs();
-                            renderTagBar();
-                            renderCalendar();
-                            showToast("📤 資料還原成功！");
-                        }
-                    } else {
-                        alert("檔案格式錯誤，無法識別備份內容。");
+                        syncConfigInputs();
+                        renderTagBar();
+                        renderCalendar();
+                        showToast("📤 資料還原成功！");
                     }
-                } catch (err) {
-                    alert("解析備份檔案失敗，請確認檔案格式是否正確。");
+                } else {
+                    alert("格式錯誤：找不到有效的薪資紀錄。");
                 }
-                event.target.value = ''; // 清空選擇，允許重複選同檔案
-            };
-            reader.readAsText(file);
+            } catch (err) {
+                alert("解析失敗：貼上的文字不是正確的備份格式。");
+            }
         }
 
         function getCurrentMonthKey() {
@@ -800,7 +809,7 @@
             if (isNoteModeActive) {
                 btn.classList.add('active');
                 btn.innerText = '✍️ 註記中';
-                showToast('✏️ 點選任一日期新增/編輯註記');
+                showToast('✏️️ 點選任一日期新增/編輯註記');
             } else {
                 btn.classList.remove('active');
                 btn.innerText = '✍️ 註記';
