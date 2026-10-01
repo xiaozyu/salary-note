@@ -125,6 +125,23 @@
             cursor: not-allowed;
         }
 
+        .action-icon-btn {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid #38bdf8;
+            color: #38bdf8;
+            height: 36px;
+            padding: 0 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+        .action-icon-btn:active { background: #38bdf8; color: #0f172a; }
+
         .note-toggle-btn { 
             background: rgba(56, 189, 248, 0.1); 
             border: 1px solid #38bdf8; 
@@ -353,7 +370,7 @@
         .opt-half { top: 32px; right: 4px; } 
         .opt-tips { bottom: 32px; right: 4px; color: #fda4af; } 
         .opt-rain { bottom: 8px; left: 54px; } 
-        .opt-clear { top: 63px; left: 4px; color: #94a3b8; }   
+        .opt-clear { top: 63px; left: 4px; color: #94a3b8; }    
 
         .weapon-option.highlight { color: #22d3ee !important; font-size: 20px !important; text-shadow: 0 0 20px #06b6d4, 0 0 40px #06b6d4; opacity: 1 !important; z-index: 999; }
         .opt-full.highlight  { transform: translateY(-8px); } 
@@ -365,7 +382,6 @@
         .drawer-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); z-index: 10001; display: none; opacity: 0; transition: opacity 0.2s; }
         .drawer-mask.show { display: block; opacity: 1; }
 
-        /* 抽屜樣式 */
         .note-drawer { position: fixed; bottom: -340px; left: 0; right: 0; background: #1e293b; border-top: 1px solid #475569; border-radius: 20px 20px 0 0; padding: 18px 16px; z-index: 10002; transition: bottom 0.25s cubic-bezier(0.1, 0.9, 0.2, 1); }
         .note-drawer.show { bottom: 0; }
         .drawer-title { font-size: 15px; font-weight: 700; color: #38bdf8; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
@@ -457,6 +473,9 @@
                     <div class="total-money" id="total-salary">$0</div>
                 </div>
                 <div class="dash-right-group">
+                    <button class="action-icon-btn" onclick="exportBackup()" title="匯出備份">📥 備份</button>
+                    <button class="action-icon-btn" onclick="triggerImport()" title="還原備份">📤 還原</button>
+                    <input type="file" id="import-file-input" style="display:none" accept=".json" onchange="importBackup(event)">
                     <div class="history-btn-group">
                         <button class="hist-btn" id="undo-btn" onclick="triggerUndo()" title="復原上一動" disabled>↩</button>
                         <button class="hist-btn" id="redo-btn" onclick="triggerRedo()" title="重做下一動" disabled>↪</button>
@@ -567,6 +586,67 @@
 
         let undoStack = [];
         let redoStack = [];
+
+        // 📥 匯出資料備份功能
+        function exportBackup() {
+            haptic(20);
+            const backupData = {
+                version: 1,
+                date: new Date().toISOString(),
+                workRecords: workRecords,
+                monthlyConfigs: monthlyConfigs,
+                customTags: customTags
+            };
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            const dateStr = new Date().toISOString().slice(0, 10);
+            downloadAnchor.setAttribute("download", `salary_backup_${dateStr}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast("📥 備份檔已成功下載！");
+        }
+
+        // 📤 還原資料匯入功能
+        function triggerImport() {
+            haptic(20);
+            document.getElementById('import-file-input').click();
+        }
+
+        function importBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed && parsed.workRecords) {
+                        if (confirm(`確定要還原 ${parsed.date ? parsed.date.slice(0, 10) : '備份'} 的資料嗎？這將會覆蓋當前的紀錄。`)) {
+                            pushHistory();
+                            workRecords = parsed.workRecords || {};
+                            monthlyConfigs = parsed.monthlyConfigs || {};
+                            customTags = parsed.customTags || ['點工', '加班', '夜班', '扣款', '借支'];
+
+                            localStorage.setItem('cs_work_records', JSON.stringify(workRecords));
+                            localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
+                            localStorage.setItem('cs_custom_tags', JSON.stringify(customTags));
+
+                            syncConfigInputs();
+                            renderTagBar();
+                            renderCalendar();
+                            showToast("📤 資料還原成功！");
+                        }
+                    } else {
+                        alert("檔案格式錯誤，無法識別備份內容。");
+                    }
+                } catch (err) {
+                    alert("解析備份檔案失敗，請確認檔案格式是否正確。");
+                }
+                event.target.value = ''; // 清空選擇，允許重複選同檔案
+            };
+            reader.readAsText(file);
+        }
 
         function getCurrentMonthKey() {
             return currentYear + "-" + String(currentMonth + 1).padStart(2, '0');
@@ -775,7 +855,6 @@
             monthlyConfigs[mKey] = { base: bWage, bonus: cBonus };
             localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
             
-            // 僅重新計算「當月」工資，不污染前幾個月歷史
             for (let d in workRecords) { 
                 if (d.startsWith(mKey)) {
                     if (workRecords[d].status === '全天') workRecords[d].wage = bWage; 
