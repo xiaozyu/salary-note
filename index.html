@@ -112,8 +112,8 @@
                     <div class="total-money" id="total-salary">$0</div>
                 </div>
                 <div class="dash-right-group">
-                    <button class="action-icon-btn" onclick="exportBackupText()" title="複製備份文字">📥 備份</button>
-                    <button class="action-icon-btn" onclick="importBackupText()" title="貼上還原">📤 還原</button>
+                    <button class="action-icon-btn" onclick="exportBackupText()" title="匯出備份文字">📥 匯出</button>
+                    <button class="action-icon-btn" onclick="importBackupText()" title="匯入還原文字">📤 匯入</button>
                     <div class="history-btn-group">
                         <button class="hist-btn" id="undo-btn" onclick="triggerUndo()" title="復原上一動" disabled>↩</button>
                         <button class="hist-btn" id="redo-btn" onclick="triggerRedo()" title="重做下一動" disabled>↪</button>
@@ -219,7 +219,6 @@
         let undoStack = [];
         let redoStack = [];
 
-        // 📥 備份：產生簡短清晰的文字明細，帶有防呆保護
         function exportBackupText() {
             haptic(20);
             const backupData = {
@@ -257,7 +256,6 @@
             document.body.removeChild(textArea);
         }
 
-        // 📤 還原：增加智慧容錯，即使格式有一點點不小心被修改也能安全還原
         function importBackupText() {
             haptic(20);
             const inputStr = prompt("請貼上從 LINE 複製的備份文字：");
@@ -267,7 +265,6 @@
                 let cleanStr = inputStr.trim();
                 const parsed = JSON.parse(cleanStr);
                 
-                // 支援新舊格式相容
                 const targetRecords = parsed.records || parsed.workRecords;
                 if (targetRecords) {
                     if (confirm("確定要還原這筆備份資料嗎？這將會更新目前的紀錄。")) {
