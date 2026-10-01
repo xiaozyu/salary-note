@@ -112,8 +112,11 @@
                     <div class="total-money" id="total-salary">$0</div>
                 </div>
                 <div class="dash-right-group">
-                    <button class="action-icon-btn" onclick="exportBackupText()" title="匯出備份文字">📥 匯出</button>
-                    <button class="action-icon-btn" onclick="importBackupText()" title="匯入還原文字">📤 匯入</button>
+                    <button class="action-icon-btn" onclick="exportBackupFile()" title="匯出備份檔案">📥 匯出</button>
+                    <button class="action-icon-btn" onclick="triggerImportFile()" title="匯入備份檔案">📤 匯入</button>
+                    <!-- 隱藏的檔案上傳 input -->
+                    <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleFileImport(event)">
+                    
                     <div class="history-btn-group">
                         <button class="hist-btn" id="undo-btn" onclick="triggerUndo()" title="復原上一動" disabled>↩</button>
                         <button class="hist-btn" id="redo-btn" onclick="triggerRedo()" title="重做下一動" disabled>↪</button>
@@ -219,7 +222,8 @@
         let undoStack = [];
         let redoStack = [];
 
-        function exportBackupText() {
+        // 📥 匯出為真實的 .json 檔案（手機會直接彈出下載儲存）
+        function exportBackupFile() {
             haptic(20);
             const backupData = {
                 v: 1,
@@ -227,67 +231,58 @@
                 configs: monthlyConfigs,
                 tags: customTags
             };
-            const textString = JSON.stringify(backupData);
-            
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(textString).then(() => {
-                    showToast("📋 備份碼已複製！直接貼到 LINE 記事本即可");
-                }).catch(() => {
-                    fallbackCopyText(textString);
-                });
-            } else {
-                fallbackCopyText(textString);
-            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `salary_backup_${getCurrentMonthKey()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+            showToast("📥 備份檔已下載！");
         }
 
-        function fallbackCopyText(string) {
-            const textArea = document.createElement("textarea");
-            textArea.value = string;
-            textArea.style.position = "fixed";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                showToast("📋 備份碼已複製！直接貼到 LINE 記事本即可");
-            } catch (err) {
-                alert("複製失敗");
-            }
-            document.body.removeChild(textArea);
-        }
-
-        function importBackupText() {
+        // 📤 觸發檔案選擇器
+        function triggerImportFile() {
             haptic(20);
-            const inputStr = prompt("請貼上從 LINE 複製的備份文字：");
-            if (!inputStr || !inputStr.trim()) return;
-            
-            try {
-                let cleanStr = inputStr.trim();
-                const parsed = JSON.parse(cleanStr);
-                
-                const targetRecords = parsed.records || parsed.workRecords;
-                if (targetRecords) {
-                    if (confirm("確定要還原這筆備份資料嗎？這將會更新目前的紀錄。")) {
-                        pushHistory();
-                        workRecords = targetRecords || {};
-                        monthlyConfigs = parsed.configs || parsed.monthlyConfigs || {};
-                        customTags = parsed.tags || parsed.customTags || ['點工', '加班', '夜班', '扣款', '借支'];
+            document.getElementById('import-file-input').click();
+        }
 
-                        localStorage.setItem('cs_work_records', JSON.stringify(workRecords));
-                        localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
-                        localStorage.setItem('cs_custom_tags', JSON.stringify(customTags));
+        // 📤 處理上傳的 .json 檔案
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-                        syncConfigInputs();
-                        renderTagBar();
-                        renderCalendar();
-                        showToast("📤 資料還原成功！");
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const targetRecords = parsed.records || parsed.workRecords;
+                    if (targetRecords) {
+                        if (confirm("確定要從此備份檔還原資料嗎？這將會更新目前的紀錄。")) {
+                            pushHistory();
+                            workRecords = targetRecords || {};
+                            monthlyConfigs = parsed.configs || parsed.monthlyConfigs || {};
+                            customTags = parsed.tags || parsed.customTags || ['點工', '加班', '夜班', '扣款', '借支'];
+
+                            localStorage.setItem('cs_work_records', JSON.stringify(workRecords));
+                            localStorage.setItem('cs_monthly_configs', JSON.stringify(monthlyConfigs));
+                            localStorage.setItem('cs_custom_tags', JSON.stringify(customTags));
+
+                            syncConfigInputs();
+                            renderTagBar();
+                            renderCalendar();
+                            showToast("📤 資料還原成功！");
+                        }
+                    } else {
+                        alert("格式錯誤：此檔案不包含有效的薪資紀錄。");
                     }
-                } else {
-                    alert("格式錯誤：找不到有效的薪資紀錄。");
+                } catch (err) {
+                    alert("解析失敗：檔案格式錯誤或損毀。");
                 }
-            } catch (err) {
-                alert("解析失敗：貼上的文字不完整或格式不對，請重新從 LINE 複製完整的備份碼。");
-            }
+                // 清空 input 確保重複選取同一檔案也能觸發
+                event.target.value = '';
+            };
+            reader.readAsText(file);
         }
 
         function getCurrentMonthKey() {
